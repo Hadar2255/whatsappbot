@@ -316,13 +316,15 @@ function startBot() {
     const conversationActive = isConversationActive(sender);
     const shouldRespond = isMentioned || conversationActive;
 
-    // Detect intent for all messages (write ops run silently)
+    // Only call Groq when actually needed — prevents rate limiting
+    if (!shouldRespond) return;
+
     let intentResult;
     try {
       intentResult = await gemini.detectIntent(content);
     } catch (err) {
       console.error('שגיאה בזיהוי כוונה:', err.message);
-      if (shouldRespond) await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
+      await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
       return;
     }
 
@@ -330,10 +332,8 @@ function startBot() {
 
     try {
       if (WRITE_INTENTS.has(intent)) {
-        // Write ops: always execute; reply only if שולי mentioned or conversation active
-        const replyMsg = shouldRespond ? msg : SILENT;
-        const botReply = await routeIntentWithResult(replyMsg, groupId, sender, intentResult);
-        if (shouldRespond) updateConversation(sender, content, botReply);
+        const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
+        updateConversation(sender, content, botReply);
 
       } else if (READ_INTENTS.has(intent) && shouldRespond) {
         const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
