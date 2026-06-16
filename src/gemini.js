@@ -1,10 +1,10 @@
 'use strict';
 
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 
 const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי. תפקידך לזהות את כוונת המשתמש מתוך הודעה בעברית ולהחזיר JSON בלבד.
 
-הפורמט שחייב להחזיר (JSON בלבד, ללא markdown, ללא הסברים):
+הפורמט שחייב להחזיר (JSON בלבד):
 {"intent": "...", "params": {...}}
 
 הכוונות האפשריות:
@@ -48,19 +48,22 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 אם ההודעה אינה מתאימה לאף כוונה:
 {"intent": "unknown", "params": {}}`;
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({
-  model: 'gemini-2.0-flash-lite',
-  systemInstruction: SYSTEM_PROMPT,
-  generationConfig: { responseMimeType: 'application/json' }
-});
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 async function detectIntent(message) {
   try {
-    const result = await model.generateContent(message);
-    return JSON.parse(result.response.text());
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: message }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0
+    });
+    return JSON.parse(completion.choices[0].message.content);
   } catch (err) {
-    console.error('Gemini error:', err.message);
+    console.error('Groq error:', err.message);
     return { intent: 'unknown', params: {} };
   }
 }
