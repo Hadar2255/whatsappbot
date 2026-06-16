@@ -1,6 +1,6 @@
 'use strict';
 
-const Database = require('better-sqlite3');
+const { DatabaseSync: Database } = require('node:sqlite');
 const path = require('path');
 const fs = require('fs');
 
@@ -76,7 +76,7 @@ function getDb(groupId) {
   const dbPath = path.join(dataDir, filename);
   const db = new Database(dbPath);
 
-  db.pragma('journal_mode = WAL');
+  db.exec('PRAGMA journal_mode = WAL');
   initSchema(db);
 
   connections.set(groupId, db);
