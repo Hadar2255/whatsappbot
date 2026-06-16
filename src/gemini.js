@@ -88,4 +88,43 @@ async function detectIntent(message) {
   }
 }
 
-module.exports = { detectIntent };
+async function transcribeAudio(media) {
+  const mimeType = media.mimetype.split(';')[0].trim();
+  const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'ogg';
+  const audioBuffer = Buffer.from(media.data, 'base64');
+  const file = await Groq.toFile(audioBuffer, `audio.${ext}`, { type: mimeType });
+
+  const transcription = await groq.audio.transcriptions.create({
+    file,
+    model: 'whisper-large-v3',
+    language: 'he',
+    response_format: 'text'
+  });
+  return typeof transcription === 'string' ? transcription : transcription.text || '';
+}
+
+async function analyzeImage(media) {
+  const mimeType = media.mimetype.split(';')[0].trim();
+  const dataUrl = `data:${mimeType};base64,${media.data}`;
+
+  const completion = await groq.chat.completions.create({
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+    messages: [{
+      role: 'user',
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: dataUrl }
+        },
+        {
+          type: 'text',
+          text: 'תאר בעברית מה בתמונה. אם יש חשבונית/קבלה — ציין את הסכום הכולל ושם העסק. אם יש רשימה — ציין את הפריטים. אם יש טקסט — תמלל אותו.'
+        }
+      ]
+    }],
+    temperature: 0
+  });
+  return completion.choices[0].message.content || '';
+}
+
+module.exports = { detectIntent, transcribeAudio, analyzeImage };

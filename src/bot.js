@@ -5,6 +5,7 @@ const qrcode = require('qrcode-terminal');
 
 const db = require('./database');
 const gemini = require('./gemini');
+const { transcribeAudio, analyzeImage } = gemini;
 const shopping = require('./features/shopping');
 const tasks = require('./features/tasks');
 const shifts = require('./features/shifts');
@@ -186,6 +187,31 @@ function startBot() {
     const timestamp = msg.timestamp || Math.floor(Date.now() / 1000);
 
     db.saveMessage(groupId, sender, content, timestamp);
+
+    // Process voice / image messages
+    if (msg.hasMedia && ['ptt', 'audio', 'image'].includes(msg.type)) {
+      try {
+        const media = await msg.downloadMedia();
+        if (msg.type === 'ptt' || msg.type === 'audio') {
+          const transcribed = await transcribeAudio(media);
+          if (transcribed) {
+            console.log(`[קול] ${sender}: ${transcribed}`);
+            content = transcribed;
+          }
+        } else if (msg.type === 'image') {
+          const description = await analyzeImage(media);
+          if (description) {
+            console.log(`[תמונה] ${sender}: ${description}`);
+            content = description;
+          }
+        }
+      } catch (err) {
+        console.error('שגיאה בעיבוד מדיה:', err.message);
+        return;
+      }
+    }
+
+    if (!content || content.trim().length < 2) return;
 
     const botName = process.env.BOT_NAME || 'שולי';
     const isMentioned = content.includes(botName);
