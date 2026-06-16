@@ -2,9 +2,6 @@
 
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
 const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי. תפקידך לזהות את כוונת המשתמש מתוך הודעה בעברית ולהחזיר JSON בלבד.
 
 הפורמט שחייב להחזיר (JSON בלבד, ללא markdown, ללא הסברים):
@@ -51,15 +48,17 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 אם ההודעה אינה מתאימה לאף כוונה:
 {"intent": "unknown", "params": {}}`;
 
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({
+  model: 'gemini-1.5-flash',
+  systemInstruction: SYSTEM_PROMPT,
+  generationConfig: { responseMimeType: 'application/json' }
+});
+
 async function detectIntent(message) {
   try {
-    const prompt = `${SYSTEM_PROMPT}\n\nהודעה: ${message}`;
-    const result = await model.generateContent(prompt);
-    let text = result.response.text().trim();
-
-    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-
-    return JSON.parse(text);
+    const result = await model.generateContent(message);
+    return JSON.parse(result.response.text());
   } catch (err) {
     console.error('Gemini error:', err.message);
     return { intent: 'unknown', params: {} };
