@@ -11,14 +11,39 @@ const shifts = require('./features/shifts');
 const attendance = require('./features/attendance');
 const medical = require('./features/medical');
 
+const CHROME_PATHS_WINDOWS = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+];
+
+function findChrome() {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+  if (process.platform === 'win32') {
+    const fs = require('fs');
+    for (const p of CHROME_PATHS_WINDOWS) {
+      try {
+        if (fs.existsSync(p)) return p;
+      } catch (_) {}
+    }
+  }
+  return undefined;
+}
+
+const executablePath = findChrome();
+if (executablePath) {
+  console.log('משתמש בדפדפן:', executablePath);
+}
+
 const puppeteerConfig = {
   headless: true,
-  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+  ...(executablePath && { executablePath })
 };
-
-if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-  puppeteerConfig.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
-}
 
 async function routeIntent(msg, groupId, sender, { intent, params }) {
   const groupDb = db.getDb(groupId);
