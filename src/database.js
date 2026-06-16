@@ -64,6 +64,16 @@ function initSchema(db) {
       date TEXT NOT NULL,
       status TEXT DEFAULT 'pending'
     );
+
+    CREATE TABLE IF NOT EXISTS absences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      employee_name TEXT NOT NULL,
+      reason TEXT,
+      start_date TEXT NOT NULL,
+      return_date TEXT,
+      notes TEXT,
+      reported_at INTEGER NOT NULL
+    );
   `);
 }
 
