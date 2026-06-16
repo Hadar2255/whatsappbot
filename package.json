@@ -1,0 +1,19 @@
+{
+  "name": "whatsappbot-shuli",
+  "version": "1.0.0",
+  "description": "בוט ווטסאפ שולי - עם AI ו-SQLite לכל קבוצה",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.21.0",
+    "better-sqlite3": "^11.0.0",
+    "dotenv": "^16.0.0",
+    "qrcode-terminal": "^0.12.0",
+    "whatsapp-web.js": "^1.26.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
