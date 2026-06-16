@@ -187,6 +187,64 @@ async function showSummary(msg, groupId) {
   await msg.reply(parts.join('\n\n'));
 }
 
+function buildDbContext(groupDb) {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toLocaleString('he-IL');
+    let ctx = `תאריך ושעה: ${now}\n`;
+
+    const tasks = groupDb.prepare('SELECT title, assigned_to FROM tasks WHERE completed = 0').all();
+    if (tasks.length > 0) {
+      ctx += `\nמשימות פתוחות (${tasks.length}):\n`;
+      ctx += tasks.map(t => `- ${t.title}${t.assigned_to ? ` [${t.assigned_to}]` : ''}`).join('\n');
+    }
+
+    const shopping = groupDb.prepare('SELECT item FROM shopping_list WHERE removed = 0').all();
+    if (shopping.length > 0) {
+      ctx += `\n\nרשימת קניות: ${shopping.map(s => s.item).join(', ')}`;
+    }
+
+    const absences = groupDb.prepare(
+      'SELECT employee_name, reason, return_date FROM absences ORDER BY reported_at DESC LIMIT 10'
+    ).all();
+    if (absences.length > 0) {
+      ctx += `\n\nהיעדרויות:\n`;
+      ctx += absences.map(a => `- ${a.employee_name}: ${a.reason}${a.return_date ? ` (חוזר ${a.return_date})` : ''}`).join('\n');
+    }
+
+    const shifts = groupDb.prepare(
+      'SELECT employee_name, start_time, end_time FROM shifts WHERE shift_date = ?'
+    ).all(today);
+    if (shifts.length > 0) {
+      ctx += `\n\nמשמרות היום:\n`;
+      ctx += shifts.map(s => `- ${s.employee_name}${s.start_time ? ` ${s.start_time}–${s.end_time}` : ''}`).join('\n');
+    }
+
+    const attendance = groupDb.prepare(
+      'SELECT employee_name, clock_in, clock_out FROM attendance WHERE date = ? ORDER BY clock_in'
+    ).all(today);
+    if (attendance.length > 0) {
+      ctx += `\n\nנוכחות היום:\n`;
+      ctx += attendance.map(a => {
+        const inT = a.clock_in ? new Date(a.clock_in).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : '?';
+        const outT = a.clock_out ? new Date(a.clock_out).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' }) : 'עדיין בעבודה';
+        return `- ${a.employee_name}: ${inT} → ${outT}`;
+      }).join('\n');
+    }
+
+    const expenses = groupDb.prepare(
+      'SELECT SUM(amount) as total, COUNT(*) as cnt FROM expenses WHERE created_at >= ?'
+    ).get(new Date(new Date().getFullYear(), new Date().getMonth(), 1).getTime());
+    if (expenses && expenses.total) {
+      ctx += `\n\nהוצאות החודש: ₪${Number(expenses.total).toFixed(2)} (${expenses.cnt} פעולות)`;
+    }
+
+    return ctx;
+  } catch (e) {
+    return '';
+  }
+}
+
 function startBot() {
   const client = new Client({
     authStrategy: new LocalAuth(),
@@ -274,9 +332,10 @@ function startBot() {
         updateConversation(sender, content, botReply);
 
       } else if (shouldRespond) {
-        // Conversational response
+        // Conversational response with live DB context
         const history = getHistory(sender);
-        const reply = await chat(content, history);
+        const dbContext = buildDbContext(db.getDb(groupId));
+        const reply = await chat(content, history, dbContext);
         await msg.reply(reply);
         updateConversation(sender, content, reply);
       }

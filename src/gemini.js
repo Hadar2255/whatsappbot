@@ -128,22 +128,27 @@ async function analyzeImage(media) {
   return completion.choices[0].message.content || '';
 }
 
-const CHAT_PROMPT = `אתה שולי, עוזרת חכמה וחברותית בקבוצת ווטסאפ. ענה בעברית בצורה טבעית, קצרה וידידותית.
+const CHAT_PROMPT = `אתה שולי, עוזרת חכמה וחברותית בקבוצת ווטסאפ. ענה בעברית בצורה טבעית וידידותית.
 אתה יכול לנהל רשימות קניות, משימות, משמרות, נוכחות, היעדרויות, הוצאות ועוד.
-אם שואלים שאלה כללית — ענה עליה. אם מבקשים לבצע פעולה — בצע אותה ואשר.
-אל תחזור על שאלת המשתמש. אל תכתוב הקדמות ארוכות.`;
+כשיש לך נתוני מערכת — השתמש בהם כדי לתת המלצות חכמות ומותאמות אישית.
+אם שואלים שאלה כללית — ענה עליה כמו ChatGPT. אם מבקשים לבצע פעולה — בצע ואשר.
+אל תחזור על שאלת המשתמש. תהיה קצר וענייני אלא אם ביקשו הסבר ארוך.`;
 
-async function chat(message, history = []) {
+async function chat(message, history = [], dbContext = '') {
   try {
+    const systemContent = dbContext
+      ? `${CHAT_PROMPT}\n\n--- נתוני מערכת עדכניים ---\n${dbContext}\n--- סוף נתוני מערכת ---`
+      : CHAT_PROMPT;
+
     const completion = await groq.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: CHAT_PROMPT },
-        ...history.slice(-8),
+        { role: 'system', content: systemContent },
+        ...history.slice(-10),
         { role: 'user', content: message }
       ],
       temperature: 0.7,
-      max_tokens: 500
+      max_tokens: 800
     });
     return completion.choices[0].message.content || '';
   } catch (err) {
