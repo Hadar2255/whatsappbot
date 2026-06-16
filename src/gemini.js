@@ -1,6 +1,7 @@
 'use strict';
 
 const Groq = require('groq-sdk');
+const { toFile } = require('groq-sdk');
 
 const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי. תפקידך לזהות את כוונת המשתמש מתוך הודעה בעברית ולהחזיר JSON בלבד.
 
@@ -92,7 +93,7 @@ async function transcribeAudio(media) {
   const mimeType = media.mimetype.split(';')[0].trim();
   const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'ogg';
   const audioBuffer = Buffer.from(media.data, 'base64');
-  const file = await Groq.toFile(audioBuffer, `audio.${ext}`, { type: mimeType });
+  const file = await toFile(audioBuffer, `audio.${ext}`, { type: mimeType });
 
   const transcription = await groq.audio.transcriptions.create({
     file,
@@ -127,4 +128,28 @@ async function analyzeImage(media) {
   return completion.choices[0].message.content || '';
 }
 
-module.exports = { detectIntent, transcribeAudio, analyzeImage };
+const CHAT_PROMPT = `אתה שולי, עוזרת חכמה וחברותית בקבוצת ווטסאפ. ענה בעברית בצורה טבעית, קצרה וידידותית.
+אתה יכול לנהל רשימות קניות, משימות, משמרות, נוכחות, היעדרויות, הוצאות ועוד.
+אם שואלים שאלה כללית — ענה עליה. אם מבקשים לבצע פעולה — בצע אותה ואשר.
+אל תחזור על שאלת המשתמש. אל תכתוב הקדמות ארוכות.`;
+
+async function chat(message, history = []) {
+  try {
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: CHAT_PROMPT },
+        ...history.slice(-8),
+        { role: 'user', content: message }
+      ],
+      temperature: 0.7,
+      max_tokens: 500
+    });
+    return completion.choices[0].message.content || '';
+  } catch (err) {
+    console.error('Groq chat error:', err.message);
+    return 'מצטערת, אין לי תשובה כרגע.';
+  }
+}
+
+module.exports = { detectIntent, transcribeAudio, analyzeImage, chat };

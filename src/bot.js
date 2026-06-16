@@ -5,7 +5,7 @@ const qrcode = require('qrcode-terminal');
 
 const db = require('./database');
 const gemini = require('./gemini');
-const { transcribeAudio, analyzeImage } = gemini;
+const { transcribeAudio, analyzeImage, chat } = gemini;
 const shopping = require('./features/shopping');
 const tasks = require('./features/tasks');
 const shifts = require('./features/shifts');
@@ -14,6 +14,28 @@ const medical = require('./features/medical');
 const absences = require('./features/absences');
 const lists = require('./features/lists');
 const expenses = require('./features/expenses');
+
+// Conversation context: senderId → { messages, lastActivity }
+const conversations = new Map();
+const CONVERSATION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+function isConversationActive(senderId) {
+  const ctx = conversations.get(senderId);
+  return ctx && (Date.now() - ctx.lastActivity < CONVERSATION_TIMEOUT);
+}
+
+function updateConversation(senderId, userMsg, botMsg) {
+  const ctx = conversations.get(senderId) || { messages: [] };
+  ctx.messages.push({ role: 'user', content: userMsg });
+  if (botMsg) ctx.messages.push({ role: 'assistant', content: botMsg });
+  if (ctx.messages.length > 12) ctx.messages = ctx.messages.slice(-12);
+  ctx.lastActivity = Date.now();
+  conversations.set(senderId, ctx);
+}
+
+function getHistory(senderId) {
+  return conversations.get(senderId)?.messages || [];
+}
 
 const CHROME_PATHS_WINDOWS = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -48,6 +70,16 @@ const puppeteerConfig = {
   args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   ...(executablePath && { executablePath })
 };
+
+async function routeIntentWithResult(msg, groupId, sender, intentResult) {
+  let captured = null;
+  const capturingMsg = msg === SILENT ? SILENT : {
+    ...msg,
+    reply: async (text) => { captured = text; return msg.reply(text); }
+  };
+  await routeIntent(capturingMsg, groupId, sender, intentResult);
+  return captured;
+}
 
 async function routeIntent(msg, groupId, sender, { intent, params }) {
   const groupDb = db.getDb(groupId);
@@ -215,16 +247,16 @@ function startBot() {
 
     const botName = process.env.BOT_NAME || 'שולי';
     const isMentioned = content.includes(botName);
+    const conversationActive = isConversationActive(sender);
+    const shouldRespond = isMentioned || conversationActive;
 
-    // Skip if not mentioned and content is too short to contain intent
-    if (!isMentioned && content.trim().length < 3) return;
-
+    // Detect intent for all messages (write ops run silently)
     let intentResult;
     try {
       intentResult = await gemini.detectIntent(content);
     } catch (err) {
       console.error('שגיאה בזיהוי כוונה:', err.message);
-      if (isMentioned) await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
+      if (shouldRespond) await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
       return;
     }
 
@@ -232,17 +264,25 @@ function startBot() {
 
     try {
       if (WRITE_INTENTS.has(intent)) {
-        // Write ops run silently always; reply only when שולי mentioned
-        await routeIntent(isMentioned ? msg : SILENT, groupId, sender, intentResult);
-      } else if (READ_INTENTS.has(intent) && isMentioned) {
-        await routeIntent(msg, groupId, sender, intentResult);
-      } else if (isMentioned) {
-        // שולי mentioned but no specific intent → show summary
-        await showSummary(msg, groupId);
+        // Write ops: always execute; reply only if שולי mentioned or conversation active
+        const replyMsg = shouldRespond ? msg : SILENT;
+        const botReply = await routeIntentWithResult(replyMsg, groupId, sender, intentResult);
+        if (shouldRespond) updateConversation(sender, content, botReply);
+
+      } else if (READ_INTENTS.has(intent) && shouldRespond) {
+        const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
+        updateConversation(sender, content, botReply);
+
+      } else if (shouldRespond) {
+        // Conversational response
+        const history = getHistory(sender);
+        const reply = await chat(content, history);
+        await msg.reply(reply);
+        updateConversation(sender, content, reply);
       }
     } catch (err) {
       console.error('שגיאה בטיפול בבקשה:', err.message);
-      await msg.reply('אירעה שגיאה. נסה שוב.');
+      if (shouldRespond) await msg.reply('אירעה שגיאה. נסה שוב.');
     }
   });
 
