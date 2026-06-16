@@ -12,6 +12,7 @@ const attendance = require('./features/attendance');
 const medical = require('./features/medical');
 const absences = require('./features/absences');
 const lists = require('./features/lists');
+const expenses = require('./features/expenses');
 
 const CHROME_PATHS_WINDOWS = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -94,6 +95,11 @@ async function routeIntent(msg, groupId, sender, { intent, params }) {
     case 'list_view':
       return lists.viewList(groupDb, msg, params);
 
+    case 'expense_add':
+      return expenses.addExpense(groupDb, msg, sender, params);
+    case 'expense_view':
+      return expenses.viewExpenses(groupDb, msg, params);
+
     default:
       await msg.reply('שולי לא הבינה את הבקשה. אפשר לנסות שוב בצורה אחרת?');
   }
@@ -106,11 +112,12 @@ const WRITE_INTENTS = new Set([
   'attendance_in', 'attendance_out',
   'medical_add',
   'absence_add',
-  'list_add', 'list_remove'
+  'list_add', 'list_remove',
+  'expense_add'
 ]);
 
 const READ_INTENTS = new Set([
-  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view'
+  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view', 'expense_view'
 ]);
 
 const SILENT = { reply: async () => {} };

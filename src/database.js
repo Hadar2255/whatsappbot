@@ -65,6 +65,15 @@ function initSchema(db) {
       status TEXT DEFAULT 'pending'
     );
 
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      amount REAL NOT NULL,
+      category TEXT DEFAULT 'כללי',
+      description TEXT,
+      reported_by TEXT,
+      created_at INTEGER NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS general_lists (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       list_name TEXT NOT NULL,
