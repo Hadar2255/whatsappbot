@@ -69,11 +69,41 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 אם ההודעה אינה מתאימה לאף כוונה:
 {"intent": "unknown", "params": {}}`;
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
+// Support multiple keys comma-separated: GROQ_API_KEY=key1,key2,key3
+const API_KEYS = (process.env.GROQ_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
+if (API_KEYS.length === 0) throw new Error('חסר GROQ_API_KEY ב-.env');
+
+const clients = API_KEYS.map(key => new Groq({ apiKey: key }));
+let keyIndex = 0;
+
+function nextClient() {
+  const client = clients[keyIndex];
+  keyIndex = (keyIndex + 1) % clients.length;
+  return client;
+}
+
+async function callWithRotation(fn) {
+  let lastErr;
+  for (let attempt = 0; attempt < clients.length; attempt++) {
+    const client = nextClient();
+    try {
+      return await fn(client);
+    } catch (err) {
+      lastErr = err;
+      const is429 = err.status === 429 || String(err.message).includes('429');
+      if (is429 && clients.length > 1) {
+        console.log(`[key rotation] מפתח עמוס, עובר לבא (${attempt + 1}/${clients.length})...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastErr;
+}
 
 async function detectIntent(message) {
   try {
-    const completion = await groq.chat.completions.create({
+    const completion = await callWithRotation(client => client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
@@ -81,7 +111,7 @@ async function detectIntent(message) {
       ],
       response_format: { type: 'json_object' },
       temperature: 0
-    });
+    }));
     return JSON.parse(completion.choices[0].message.content);
   } catch (err) {
     console.error('Groq error:', err.message);
@@ -95,36 +125,29 @@ async function transcribeAudio(media) {
   const audioBuffer = Buffer.from(media.data, 'base64');
   const file = await toFile(audioBuffer, `audio.${ext}`, { type: mimeType });
 
-  const transcription = await groq.audio.transcriptions.create({
+  return callWithRotation(client => client.audio.transcriptions.create({
     file,
     model: 'whisper-large-v3',
     language: 'he',
     response_format: 'text'
-  });
-  return typeof transcription === 'string' ? transcription : transcription.text || '';
+  })).then(t => typeof t === 'string' ? t : t.text || '');
 }
 
 async function analyzeImage(media) {
   const mimeType = media.mimetype.split(';')[0].trim();
   const dataUrl = `data:${mimeType};base64,${media.data}`;
 
-  const completion = await groq.chat.completions.create({
+  const completion = await callWithRotation(client => client.chat.completions.create({
     model: 'meta-llama/llama-4-scout-17b-16e-instruct',
     messages: [{
       role: 'user',
       content: [
-        {
-          type: 'image_url',
-          image_url: { url: dataUrl }
-        },
-        {
-          type: 'text',
-          text: 'תאר בעברית מה בתמונה. אם יש חשבונית/קבלה — ציין את הסכום הכולל ושם העסק. אם יש רשימה — ציין את הפריטים. אם יש טקסט — תמלל אותו.'
-        }
+        { type: 'image_url', image_url: { url: dataUrl } },
+        { type: 'text', text: 'תאר בעברית מה בתמונה. אם יש חשבונית/קבלה — ציין את הסכום הכולל ושם העסק. אם יש רשימה — ציין את הפריטים. אם יש טקסט — תמלל אותו.' }
       ]
     }],
     temperature: 0
-  });
+  }));
   return completion.choices[0].message.content || '';
 }
 
@@ -140,7 +163,7 @@ async function chat(message, history = [], dbContext = '') {
       ? `${CHAT_PROMPT}\n\n--- נתוני מערכת עדכניים ---\n${dbContext}\n--- סוף נתוני מערכת ---`
       : CHAT_PROMPT;
 
-    const completion = await groq.chat.completions.create({
+    const completion = await callWithRotation(client => client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
         { role: 'system', content: systemContent },
@@ -149,7 +172,7 @@ async function chat(message, history = [], dbContext = '') {
       ],
       temperature: 0.7,
       max_tokens: 800
-    });
+    }));
     return completion.choices[0].message.content || '';
   } catch (err) {
     console.error('Groq chat error:', err.message);
