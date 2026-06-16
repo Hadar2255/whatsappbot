@@ -269,7 +269,11 @@ function startBot() {
   });
 
   client.on('message', async (msg) => {
-    if (!msg.from.endsWith('@g.us')) return;
+    console.log(`[הודעה] from=${msg.from} type=${msg.type} body=${(msg.body||'').slice(0,50)}`);
+    if (!msg.from.endsWith('@g.us')) {
+      console.log('[מדלג] לא הודעת קבוצה');
+      return;
+    }
 
     const groupId = msg.from;
     const sender = msg.author || msg.from;
