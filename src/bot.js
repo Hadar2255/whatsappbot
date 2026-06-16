@@ -262,10 +262,14 @@ function startBot() {
 
   client.on('auth_failure', (msg) => {
     console.error('שגיאת אימות:', msg);
+    console.log('מנסה להתחבר מחדש בעוד 10 שניות...');
+    setTimeout(() => client.initialize(), 10000);
   });
 
   client.on('disconnected', (reason) => {
     console.log('הבוט התנתק:', reason);
+    console.log('מנסה להתחבר מחדש בעוד 10 שניות...');
+    setTimeout(() => client.initialize(), 10000);
   });
 
   client.on('message', async (msg) => {
