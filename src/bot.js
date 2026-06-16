@@ -11,6 +11,7 @@ const shifts = require('./features/shifts');
 const attendance = require('./features/attendance');
 const medical = require('./features/medical');
 const absences = require('./features/absences');
+const lists = require('./features/lists');
 
 const CHROME_PATHS_WINDOWS = [
   'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
@@ -86,6 +87,13 @@ async function routeIntent(msg, groupId, sender, { intent, params }) {
     case 'absence_view':
       return absences.viewAbsences(groupDb, msg, params);
 
+    case 'list_add':
+      return lists.addItem(groupDb, msg, sender, params);
+    case 'list_remove':
+      return lists.removeItem(groupDb, msg, params);
+    case 'list_view':
+      return lists.viewList(groupDb, msg, params);
+
     default:
       await msg.reply('שולי לא הבינה את הבקשה. אפשר לנסות שוב בצורה אחרת?');
   }
@@ -97,11 +105,12 @@ const WRITE_INTENTS = new Set([
   'shift_assign',
   'attendance_in', 'attendance_out',
   'medical_add',
-  'absence_add'
+  'absence_add',
+  'list_add', 'list_remove'
 ]);
 
 const READ_INTENTS = new Set([
-  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view'
+  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view'
 ]);
 
 const SILENT = { reply: async () => {} };

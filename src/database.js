@@ -65,6 +65,16 @@ function initSchema(db) {
       status TEXT DEFAULT 'pending'
     );
 
+    CREATE TABLE IF NOT EXISTS general_lists (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      list_name TEXT NOT NULL,
+      item TEXT NOT NULL,
+      added_by TEXT,
+      added_at INTEGER NOT NULL,
+      removed INTEGER DEFAULT 0,
+      removed_at INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS absences (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_name TEXT NOT NULL,
