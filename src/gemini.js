@@ -50,7 +50,7 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({
-  model: 'gemini-2.0-flash',
+  model: 'gemini-2.0-flash-lite',
   systemInstruction: SYSTEM_PROMPT,
   generationConfig: { responseMimeType: 'application/json' }
 });
