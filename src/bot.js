@@ -85,7 +85,53 @@ async function routeIntent(msg, groupId, sender, { intent, params }) {
   }
 }
 
-function startBot() {
+const WRITE_INTENTS = new Set([
+  'shopping_add', 'shopping_remove',
+  'task_add', 'task_complete',
+  'shift_assign',
+  'attendance_in', 'attendance_out',
+  'medical_add'
+]);
+
+const READ_INTENTS = new Set([
+  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list'
+]);
+
+const SILENT = { reply: async () => {} };
+
+async function showSummary(msg, groupId) {
+  const groupDb = db.getDb(groupId);
+
+  const shoppingItems = groupDb.prepare(
+    'SELECT item FROM shopping_list WHERE removed = 0 ORDER BY added_at ASC'
+  ).all();
+  const openTasks = groupDb.prepare(
+    'SELECT title, assigned_to FROM tasks WHERE completed = 0 ORDER BY created_at ASC'
+  ).all();
+
+  let parts = [];
+
+  if (shoppingItems.length > 0) {
+    const list = shoppingItems.map((r, i) => `${i + 1}. ${r.item}`).join('\n');
+    parts.push(`🛒 *רשימת קניות (${shoppingItems.length}):*\n${list}`);
+  }
+
+  if (openTasks.length > 0) {
+    const list = openTasks.map((t, i) => {
+      const a = t.assigned_to ? ` ← ${t.assigned_to}` : '';
+      return `${i + 1}. ${t.title}${a}`;
+    }).join('\n');
+    parts.push(`📋 *משימות פתוחות (${openTasks.length}):*\n${list}`);
+  }
+
+  if (parts.length === 0) {
+    return msg.reply('אין פריטים פתוחים ברשימות כרגע.');
+  }
+
+  await msg.reply(parts.join('\n\n'));
+}
+
+
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: puppeteerConfig
@@ -119,19 +165,32 @@ function startBot() {
     db.saveMessage(groupId, sender, content, timestamp);
 
     const botName = process.env.BOT_NAME || 'שולי';
-    if (!content.includes(botName)) return;
+    const isMentioned = content.includes(botName);
+
+    // Skip if not mentioned and content is too short to contain intent
+    if (!isMentioned && content.trim().length < 3) return;
 
     let intentResult;
     try {
       intentResult = await gemini.detectIntent(content);
     } catch (err) {
       console.error('שגיאה בזיהוי כוונה:', err.message);
-      await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
+      if (isMentioned) await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
       return;
     }
 
+    const { intent } = intentResult;
+
     try {
-      await routeIntent(msg, groupId, sender, intentResult);
+      if (WRITE_INTENTS.has(intent)) {
+        // Write ops run silently always; reply only when שולי mentioned
+        await routeIntent(isMentioned ? msg : SILENT, groupId, sender, intentResult);
+      } else if (READ_INTENTS.has(intent) && isMentioned) {
+        await routeIntent(msg, groupId, sender, intentResult);
+      } else if (isMentioned) {
+        // שולי mentioned but no specific intent → show summary
+        await showSummary(msg, groupId);
+      }
     } catch (err) {
       console.error('שגיאה בטיפול בבקשה:', err.message);
       await msg.reply('אירעה שגיאה. נסה שוב.');
