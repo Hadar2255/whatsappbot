@@ -131,7 +131,7 @@ async function showSummary(msg, groupId) {
   await msg.reply(parts.join('\n\n'));
 }
 
-
+function startBot() {
   const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: puppeteerConfig
