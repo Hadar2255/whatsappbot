@@ -74,7 +74,10 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 const API_KEYS = (process.env.GROQ_API_KEY || '').split(',').map(k => k.trim()).filter(Boolean);
 if (API_KEYS.length === 0) throw new Error('חסר GROQ_API_KEY ב-.env');
 
-const clients = API_KEYS.map(key => new Groq({ apiKey: key }));
+// maxRetries: 0 — the SDK retries 429s internally with its own backoff delay before
+// failing, which made each key take many seconds before callWithRotation could move
+// to the next one. We already retry across keys ourselves, so fail fast per key.
+const clients = API_KEYS.map(key => new Groq({ apiKey: key, maxRetries: 0 }));
 let keyIndex = 0;
 
 function nextClient() {
