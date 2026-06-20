@@ -15,26 +15,31 @@ const absences = require('./features/absences');
 const lists = require('./features/lists');
 const expenses = require('./features/expenses');
 
-// Conversation context: senderId → { messages, lastActivity }
+// Conversation context, scoped per group+sender so one person's chat in
+// group A never leaks into their conversation in group B: convKey → { messages, lastActivity }
 const conversations = new Map();
 const CONVERSATION_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
-function isConversationActive(senderId) {
-  const ctx = conversations.get(senderId);
+function convKey(groupId, senderId) {
+  return `${groupId}:${senderId}`;
+}
+
+function isConversationActive(key) {
+  const ctx = conversations.get(key);
   return ctx && (Date.now() - ctx.lastActivity < CONVERSATION_TIMEOUT);
 }
 
-function updateConversation(senderId, userMsg, botMsg) {
-  const ctx = conversations.get(senderId) || { messages: [] };
+function updateConversation(key, userMsg, botMsg) {
+  const ctx = conversations.get(key) || { messages: [] };
   ctx.messages.push({ role: 'user', content: userMsg });
   if (botMsg) ctx.messages.push({ role: 'assistant', content: botMsg });
   if (ctx.messages.length > 12) ctx.messages = ctx.messages.slice(-12);
   ctx.lastActivity = Date.now();
-  conversations.set(senderId, ctx);
+  conversations.set(key, ctx);
 }
 
-function getHistory(senderId) {
-  return conversations.get(senderId)?.messages || [];
+function getHistory(key) {
+  return conversations.get(key)?.messages || [];
 }
 
 const CHROME_PATHS_WINDOWS = [
@@ -204,6 +209,16 @@ function buildDbContext(groupDb) {
       ctx += `\n\nרשימת קניות: ${shopping.map(s => s.item).join(', ')}`;
     }
 
+    const generalLists = groupDb.prepare(
+      'SELECT list_name, item FROM general_lists WHERE removed = 0 ORDER BY list_name, added_at ASC'
+    ).all();
+    if (generalLists.length > 0) {
+      const byName = {};
+      for (const r of generalLists) (byName[r.list_name] ||= []).push(r.item);
+      ctx += `\n\nרשימות נוספות:\n`;
+      ctx += Object.entries(byName).map(([name, items]) => `- ${name}: ${items.join(', ')}`).join('\n');
+    }
+
     const absences = groupDb.prepare(
       'SELECT employee_name, reason, return_date FROM absences ORDER BY reported_at DESC LIMIT 10'
     ).all();
@@ -281,7 +296,8 @@ function startBot() {
 
     const groupId = msg.from;
     const sender = msg.author || msg.from;
-    const content = msg.body || '';
+    const key = convKey(groupId, sender);
+    let content = msg.body || '';
     const timestamp = msg.timestamp || Math.floor(Date.now() / 1000);
 
     db.saveMessage(groupId, sender, content, timestamp);
@@ -313,7 +329,7 @@ function startBot() {
 
     const botName = process.env.BOT_NAME || 'שולי';
     const isMentioned = content.includes(botName);
-    const conversationActive = isConversationActive(sender);
+    const conversationActive = isConversationActive(key);
     const shouldRespond = isMentioned || conversationActive;
 
     // Only call Groq when actually needed — prevents rate limiting
@@ -333,19 +349,19 @@ function startBot() {
     try {
       if (WRITE_INTENTS.has(intent)) {
         const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
-        updateConversation(sender, content, botReply);
+        updateConversation(key, content, botReply);
 
       } else if (READ_INTENTS.has(intent) && shouldRespond) {
         const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
-        updateConversation(sender, content, botReply);
+        updateConversation(key, content, botReply);
 
       } else if (shouldRespond) {
         // Conversational response with live DB context
-        const history = getHistory(sender);
+        const history = getHistory(key);
         const dbContext = buildDbContext(db.getDb(groupId));
         const reply = await chat(content, history, dbContext);
         await msg.reply(reply);
-        updateConversation(sender, content, reply);
+        updateConversation(key, content, reply);
       }
     } catch (err) {
       console.error('שגיאה בטיפול בבקשה:', err.message);
