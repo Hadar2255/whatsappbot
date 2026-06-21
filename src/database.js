@@ -93,6 +93,17 @@ function initSchema(db) {
       notes TEXT,
       reported_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS appointments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      event_date TEXT NOT NULL,
+      start_time TEXT,
+      end_time TEXT,
+      notes TEXT,
+      created_by TEXT,
+      created_at INTEGER NOT NULL
+    );
   `);
 }
 

@@ -2,6 +2,7 @@
 
 const Groq = require('groq-sdk');
 const { toFile } = require('groq-sdk');
+const { hebrewWeekday } = require('./utils');
 
 const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי. תפקידך לזהות את כוונת המשתמש מתוך הודעה בעברית ולהחזיר JSON בלבד.
 
@@ -45,6 +46,12 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
   params: {"description": "תיאור הבקשה", "date": "תאריך רלוונטי כמחרוזת"}
 - medical_list: הצגת בקשות רפואיות ("מה הבקשות הרפואיות", "תראי לי את הטפסים הרפואיים", "בקשות פתוחות")
   params: {"status": "pending או completed או null לכולן"}
+
+תוכניות, תורים ופגישות אישיות (זהה באופן פסיבי כל הודעה שמתארת תור/פגישה/תוכנית עם תאריך או שעה, גם בלי בקשה מפורשת לשמור — זה לא קשור לטופס רפואי, זה כל תור/פגישה/תוכנית):
+- appointment_add: רישום תור/פגישה/תוכנית ("מחר יש לי פיזיותרפיה בשעה 12", "ביום שלישי פגישה עם הרופא ב-10", "בעוד שבוע תור לרופא שיניים", "בשבת אני נוסע לאמא")
+  params: {"title": "שם התור/הפגישה/התוכנית", "date": "תאריך מדויק כ-YYYY-MM-DD, מחושב לפי הקשר הזמן שניתן לך בהמשך", "start_time": "HH:MM או null", "end_time": "HH:MM או null", "notes": "הערה או null"}
+- appointment_view: הצגת תוכניות/תורים ("מה יש לי מחר", "מה התוכניות שלי השבוע", "מתי אני פנוי ביום שני", "מה יש לי היום")
+  params: {"date": "תאריך מדויק כ-YYYY-MM-DD אם מצוין יום ספציפי, אחרת null", "range": "today / tomorrow / week / all — בחר את המתאים לפי ההודעה"}
 
 מעקב הוצאות (זהה באופן פסיבי הודעה שמתארת הוצאה שכבר בוצעה בפועל — לשון עבר, תשלום/קנייה שקרו):
 - expense_add: רישום הוצאה בפועל ("שילמנו 450 שקל על דלק", "קנינו ציוד ב-800", "חשבונית 1200 ש"ח", "העברתי 500 לספק")
@@ -105,12 +112,18 @@ async function callWithRotation(fn) {
   throw lastErr;
 }
 
+function todayContextLine() {
+  const date = new Date().toISOString().split('T')[0];
+  const day = hebrewWeekday(date);
+  return `הקשר זמן: היום הוא ${date} (יום ${day}). כשמחשבים תאריכים יחסיים ("מחר", "ביום שלישי", "בעוד שבוע") — חשבו לפי התאריך הזה והחזירו תאריך מדויק בפורמט YYYY-MM-DD.`;
+}
+
 async function detectIntent(message) {
   try {
     const completion = await callWithRotation(client => client.chat.completions.create({
       model: 'llama-3.3-70b-versatile',
       messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'system', content: `${SYSTEM_PROMPT}\n\n${todayContextLine()}` },
         { role: 'user', content: message }
       ],
       response_format: { type: 'json_object' },

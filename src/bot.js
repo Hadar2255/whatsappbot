@@ -14,6 +14,8 @@ const medical = require('./features/medical');
 const absences = require('./features/absences');
 const lists = require('./features/lists');
 const expenses = require('./features/expenses');
+const appointments = require('./features/appointments');
+const { hebrewWeekday } = require('./utils');
 
 // Conversation context, scoped per group+sender so one person's chat in
 // group A never leaks into their conversation in group B: convKey → { messages, lastActivity }
@@ -138,6 +140,11 @@ async function routeIntent(msg, groupId, sender, { intent, params }) {
     case 'expense_view':
       return expenses.viewExpenses(groupDb, msg, params);
 
+    case 'appointment_add':
+      return appointments.addAppointment(groupDb, msg, sender, params);
+    case 'appointment_view':
+      return appointments.viewAppointments(groupDb, msg, params);
+
     default:
       await msg.reply('שולי לא הבינה את הבקשה. אפשר לנסות שוב בצורה אחרת?');
   }
@@ -151,11 +158,12 @@ const WRITE_INTENTS = new Set([
   'medical_add',
   'absence_add',
   'list_add', 'list_remove',
-  'expense_add'
+  'expense_add',
+  'appointment_add'
 ]);
 
 const READ_INTENTS = new Set([
-  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view', 'expense_view'
+  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view', 'expense_view', 'appointment_view'
 ]);
 
 const SILENT = { reply: async () => {} };
@@ -254,6 +262,19 @@ function buildDbContext(groupDb) {
       ctx += `\n\nהוצאות החודש: ₪${Number(expenses.total).toFixed(2)} (${expenses.cnt} פעולות)`;
     }
 
+    const twoWeeksAhead = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const upcoming = groupDb.prepare(
+      'SELECT title, event_date, start_time, end_time FROM appointments WHERE event_date >= ? AND event_date <= ? ORDER BY event_date ASC, start_time ASC'
+    ).all(today, twoWeeksAhead);
+    if (upcoming.length > 0) {
+      ctx += `\n\nתוכניות ותורים קרובים:\n`;
+      ctx += upcoming.map(a => {
+        const day = hebrewWeekday(a.event_date);
+        const timeStr = a.start_time ? ` ${a.start_time}${a.end_time ? `–${a.end_time}` : ''}` : '';
+        return `- ${a.event_date} (יום ${day})${timeStr}: ${a.title}`;
+      }).join('\n');
+    }
+
     return ctx;
   } catch (e) {
     return '';
@@ -332,15 +353,14 @@ function startBot() {
     const conversationActive = isConversationActive(key);
     const shouldRespond = isMentioned || conversationActive;
 
-    // Only call Groq when actually needed — prevents rate limiting
-    if (!shouldRespond) return;
-
+    // Detect intent for all messages (write ops, like appointments or list items,
+    // run silently so שולי remembers things even when not addressed directly)
     let intentResult;
     try {
       intentResult = await gemini.detectIntent(content);
     } catch (err) {
       console.error('שגיאה בזיהוי כוונה:', err.message);
-      await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
+      if (shouldRespond) await msg.reply('מצטערת, אני לא מצליחה להבין כרגע. נסה שוב.');
       return;
     }
 
@@ -348,8 +368,10 @@ function startBot() {
 
     try {
       if (WRITE_INTENTS.has(intent)) {
-        const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
-        updateConversation(key, content, botReply);
+        // Write ops: always execute; reply only if שולי mentioned or conversation active
+        const replyMsg = shouldRespond ? msg : SILENT;
+        const botReply = await routeIntentWithResult(replyMsg, groupId, sender, intentResult);
+        if (shouldRespond) updateConversation(key, content, botReply);
 
       } else if (READ_INTENTS.has(intent) && shouldRespond) {
         const botReply = await routeIntentWithResult(msg, groupId, sender, intentResult);
