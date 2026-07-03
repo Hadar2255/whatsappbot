@@ -104,6 +104,15 @@ function initSchema(db) {
       created_by TEXT,
       created_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS reminders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id TEXT NOT NULL,
+      reminder_text TEXT NOT NULL,
+      remind_at INTEGER NOT NULL,
+      sent INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
   `);
 }
 
@@ -130,4 +139,4 @@ function saveMessage(groupId, sender, content, timestamp) {
   ).run(sender || '', content || '', timestamp || Date.now());
 }
 
-module.exports = { getDb, saveMessage };
+module.exports = { getDb, saveMessage, connections };

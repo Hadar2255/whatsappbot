@@ -47,6 +47,12 @@ const SYSTEM_PROMPT = `אתה עוזר של בוט ווטסאפ בשם שולי.
 - medical_list: הצגת בקשות רפואיות ("מה הבקשות הרפואיות", "תראי לי את הטפסים הרפואיים", "בקשות פתוחות")
   params: {"status": "pending או completed או null לכולן"}
 
+תזכורות:
+- reminder_add: הגדרת תזכורת ("תזכיר לי בשתיים לקבוע ישיבה", "תשלח לי תזכורת מחר ב-9 לצלצל לרופא", "הזכר לי עוד שעה לשלוח מייל", "בשעה 15 תזכיר לי לאסוף את הילדים")
+  params: {"reminder_text": "על מה להזכיר", "date": "תאריך כ-YYYY-MM-DD מחושב לפי הקשר הזמן", "time": "HH:MM — שעת ההזכרה"}
+- reminder_list: הצגת תזכורות ממתינות ("מה התזכורות שלי", "מה יש לי לזכור", "תראי לי תזכורות")
+  params: {}
+
 תוכניות, תורים ופגישות אישיות (זהה באופן פסיבי כל הודעה שמתארת תור/פגישה/תוכנית עם תאריך או שעה, גם בלי בקשה מפורשת לשמור — זה לא קשור לטופס רפואי, זה כל תור/פגישה/תוכנית):
 - appointment_add: רישום תור/פגישה/תוכנית ("מחר יש לי פיזיותרפיה בשעה 12", "ביום שלישי פגישה עם הרופא ב-10", "בעוד שבוע תור לרופא שיניים", "בשבת אני נוסע לאמא")
   params: {"title": "שם התור/הפגישה/התוכנית", "date": "תאריך מדויק כ-YYYY-MM-DD, מחושב לפי הקשר הזמן שניתן לך בהמשך", "start_time": "HH:MM או null", "end_time": "HH:MM או null", "notes": "הערה או null"}
@@ -113,9 +119,11 @@ async function callWithRotation(fn) {
 }
 
 function todayContextLine() {
-  const date = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const date = now.toISOString().split('T')[0];
   const day = hebrewWeekday(date);
-  return `הקשר זמן: היום הוא ${date} (יום ${day}). כשמחשבים תאריכים יחסיים ("מחר", "ביום שלישי", "בעוד שבוע") — חשבו לפי התאריך הזה והחזירו תאריך מדויק בפורמט YYYY-MM-DD.`;
+  const timeStr = now.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+  return `הקשר זמן: היום הוא ${date} (יום ${day}), השעה כרגע היא ${timeStr}. כשמחשבים תאריכים/שעות יחסיים ("מחר", "בשתיים", "עוד שעה", "בעוד 20 דקות") — חשבו לפי הזמן הזה והחזירו תאריך ושעה מדויקים (YYYY-MM-DD ו-HH:MM).`;
 }
 
 async function detectIntent(message) {

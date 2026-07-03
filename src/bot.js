@@ -15,7 +15,9 @@ const absences = require('./features/absences');
 const lists = require('./features/lists');
 const expenses = require('./features/expenses');
 const appointments = require('./features/appointments');
+const reminders = require('./features/reminders');
 const { hebrewWeekday } = require('./utils');
+const { connections } = require('./database');
 
 // Conversation context, scoped per group+sender so one person's chat in
 // group A never leaks into their conversation in group B: convKey → { messages, lastActivity }
@@ -145,6 +147,11 @@ async function routeIntent(msg, groupId, sender, { intent, params }) {
     case 'appointment_view':
       return appointments.viewAppointments(groupDb, msg, params);
 
+    case 'reminder_add':
+      return reminders.addReminder(groupDb, msg, sender, params);
+    case 'reminder_list':
+      return reminders.listReminders(groupDb, msg, sender);
+
     default:
       await msg.reply('שולי לא הבינה את הבקשה. אפשר לנסות שוב בצורה אחרת?');
   }
@@ -159,11 +166,12 @@ const WRITE_INTENTS = new Set([
   'absence_add',
   'list_add', 'list_remove',
   'expense_add',
-  'appointment_add'
+  'appointment_add',
+  'reminder_add'
 ]);
 
 const READ_INTENTS = new Set([
-  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view', 'expense_view', 'appointment_view'
+  'shopping_list', 'task_list', 'shift_view', 'attendance_view', 'medical_list', 'absence_view', 'list_view', 'expense_view', 'appointment_view', 'reminder_list'
 ]);
 
 const SILENT = { reply: async () => {} };
@@ -392,6 +400,27 @@ function startBot() {
   });
 
   client.initialize();
+
+  // Check every 30s for due reminders and send them as direct messages to the person
+  setInterval(async () => {
+    const now = Date.now();
+    for (const [, groupDb] of connections) {
+      try {
+        const due = groupDb.prepare(
+          'SELECT id, sender_id, reminder_text FROM reminders WHERE sent = 0 AND remind_at <= ?'
+        ).all(now);
+        for (const r of due) {
+          try {
+            await client.sendMessage(r.sender_id, `🔔 *תזכורת:* ${r.reminder_text}`);
+            groupDb.prepare('UPDATE reminders SET sent = 1 WHERE id = ?').run(r.id);
+            console.log(`[תזכורת] נשלחה ל-${r.sender_id}: ${r.reminder_text}`);
+          } catch (err) {
+            console.error('[תזכורת] שגיאה בשליחה:', err.message);
+          }
+        }
+      } catch (_) {}
+    }
+  }, 30 * 1000);
 }
 
 module.exports = { startBot };
